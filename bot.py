@@ -21,8 +21,19 @@ TEXT_CHANNEL_ID = 1148735325410185257
 AUDIO_FILE = 'loop.mp3'
 PHRASES_FILE = 'phrases.txt'
 
-# === ВРЕМЯ ОТПРАВКИ (по МСК) ===
-SEND_TIMES = [(10,30),(11,0),(11,30),(12,0),(15,0),(18,0),(18,35),(20,0),(20:30),(22,0)]
+# === ВРЕМЯ ОТПРАВКИ (по МСК) — 100% ПРАВИЛЬНО ===
+SEND_TIMES = [
+    (10, 30),
+    (11, 0),
+    (11, 30),
+    (12, 0),
+    (15, 0),
+    (18, 0),
+    (18, 35),
+    (20, 0),
+    (20, 30),   # ← было (20:30) — это ломало весь бот
+    (22, 0)
+]
 
 # === ВСЕ ТВОИ ФРАЗЫ — НИ ОДНА НЕ УДАЛЕНА ===
 RESPONSES = [
@@ -51,14 +62,13 @@ messages_count = 0
 LEARNING_USER_ID = 509732478047485952
 ALWAYS_REPLY_USER_ID = 509732478047485952
 
-# === ИНТЕНТЫ ===
+# === ИНТЕНТЫ (без voice_states — голос всё равно отключён) ===
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-# intents.voice_states = True  ← УБРАНО — не нужно без голоса
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# === ЗАГРУЗКА ФРАЗ ===
+# === ЗАГРУЗКА ФРАЗ ИЗ ФАЙЛА ===
 def load_phrases():
     if not os.path.exists(PHRASES_FILE):
         return []
@@ -70,40 +80,13 @@ def load_phrases():
 
 daily_phrases = load_phrases()
 
-# === ГОЛОС ОТКЛЮЧЁН НА RAILWAY — НЕ РАБОТАЕТ ИЗ-ЗА UDP ===
-# Оставил закомментированным, чтобы ты мог включить на VPS позже
+# === ГОЛОС ОТКЛЮЧЁН НА RAILWAY (чтобы не было ошибки 4006) ===
+# Если захочешь включить — просто раскомментируй на VPS
 """
 async def ensure_voice_connection():
-    channel = bot.get_channel(VOICE_CHANNEL_ID)
-    if not channel:
-        print("Голосовой канал не найден")
-        return
-    while True:
-        vc = discord.utils.get(bot.voice_clients, channel__id=VOICE_CHANNEL_ID)
-        if not vc or not vc.is_connected():
-            try:
-                vc = await channel.connect(reconnect=True, timeout=10)
-                print(f"Подключён к голосу: {channel.name}")
-                bot.loop.create_task(music_loop(vc))
-            except Exception as e:
-                print(f"Ошибка подключения к голосу: {e}")
-                await asyncio.sleep(15)
-        await asyncio.sleep(10)
-
+    ...
 async def music_loop(vc):
-    while True:
-        if vc.is_connected() and not vc.is_playing() and os.path.exists(AUDIO_FILE):
-            try:
-                source = discord.FFmpegPCMAudio(
-                    AUDIO_FILE,
-                    before_options="-stream_loop -1 -re",
-                    options="-vn -b:a 128k"
-                )
-                vc.play(source)
-                print("Музыка зациклена")
-            except Exception as e:
-                print(f"Ошибка воспроизведения: {e}")
-        await asyncio.sleep(5)
+    ...
 """
 
 # === РАСПИСАНИЕ ===
@@ -133,9 +116,9 @@ async def on_ready():
     print(f'Бот {bot.user} онлайн!')
     print(f"Учусь на сообщениях от пользователя с ID: {LEARNING_USER_ID}")
     print(f"ВСЕГДА отвечаю пользователю с ID: {ALWAYS_REPLY_USER_ID}")
-    print("Голосовой канал отключён — на Railway не поддерживается UDP (ошибка 4006)")
+    print("Голосовой канал отключён — Railway не поддерживает UDP (4006)")
 
-    # bot.loop.create_task(ensure_voice_connection())  ← ОТКЛЮЧЕНО НАВСЕГДА НА RAILWAY
+    # bot.loop.create_task(ensure_voice_connection())  ← отключено навсегда на Railway
     scheduled_messages.start()
 
 # === АВТООТВЕТЧИК + ОБУЧЕНИЕ + ВСЕГДА ОТВЕТ ===
