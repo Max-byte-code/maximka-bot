@@ -22,7 +22,7 @@ AUDIO_FILE = 'loop.mp3'
 PHRASES_FILE = 'phrases.txt'
 
 # === ВРЕМЯ ОТПРАВКИ (по МСК) ===
-SEND_TIMES = [(10,30),(11,0),(11,30),(12,0),(15,0),(18,0),(18,35),(20,0),(22,0)]
+SEND_TIMES = [(10,30),(11,0),(11,30),(12,0),(15,0),(18,0),(18,35),(20,0),(20:30),(22,0)]
 
 # === ВСЕ ТВОИ ФРАЗЫ — НИ ОДНА НЕ УДАЛЕНА ===
 RESPONSES = [
@@ -55,7 +55,7 @@ ALWAYS_REPLY_USER_ID = 509732478047485952
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-intents.voice_states = True
+# intents.voice_states = True  ← УБРАНО — не нужно без голоса
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # === ЗАГРУЗКА ФРАЗ ===
@@ -70,7 +70,9 @@ def load_phrases():
 
 daily_phrases = load_phrases()
 
-# === ГОЛОС + МУЗЫКА (без падений) ===
+# === ГОЛОС ОТКЛЮЧЁН НА RAILWAY — НЕ РАБОТАЕТ ИЗ-ЗА UDP ===
+# Оставил закомментированным, чтобы ты мог включить на VPS позже
+"""
 async def ensure_voice_connection():
     channel = bot.get_channel(VOICE_CHANNEL_ID)
     if not channel:
@@ -102,6 +104,7 @@ async def music_loop(vc):
             except Exception as e:
                 print(f"Ошибка воспроизведения: {e}")
         await asyncio.sleep(5)
+"""
 
 # === РАСПИСАНИЕ ===
 @tasks.loop(seconds=30)
@@ -130,8 +133,9 @@ async def on_ready():
     print(f'Бот {bot.user} онлайн!')
     print(f"Учусь на сообщениях от пользователя с ID: {LEARNING_USER_ID}")
     print(f"ВСЕГДА отвечаю пользователю с ID: {ALWAYS_REPLY_USER_ID}")
-    
-    bot.loop.create_task(ensure_voice_connection())
+    print("Голосовой канал отключён — на Railway не поддерживается UDP (ошибка 4006)")
+
+    # bot.loop.create_task(ensure_voice_connection())  ← ОТКЛЮЧЕНО НАВСЕГДА НА RAILWAY
     scheduled_messages.start()
 
 # === АВТООТВЕТЧИК + ОБУЧЕНИЕ + ВСЕГДА ОТВЕТ ===
@@ -183,8 +187,6 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# === ЗАПУСК (БЕЗ КОНСОЛИ — ОНА ЛОМАЛА БОТА НА ХОСТИНГАХ) ===
-# console_loop полностью убран — он не нужен на Railway и вызывал EOF-спам + AttributeError
-
+# === ЗАПУСК ===
 print("Запускаю бота...")
 bot.run(TOKEN)
