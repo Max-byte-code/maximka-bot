@@ -3,19 +3,17 @@ from discord.ext import commands, tasks
 import asyncio
 import os
 import random
-import sys
 import re
 from datetime import datetime
 import pytz
 from dotenv import load_dotenv
 
-# === ТОКЕН ТОЛЬКО ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ===
+# === ТОКЕН ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ===
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
-
 if not TOKEN:
-    print("ОШИБКА: Переменная BOT_TOKEN не найдена! Укажи её в настройках хостинга.")
-    sys.exit(1)
+    print("ОШИБКА: Токен не найден! Укажи BOT_TOKEN в переменных окружения.")
+    exit()
 
 # === НАСТРОЙКИ ===
 VOICE_CHANNEL_ID = 1439315533395792046
@@ -23,22 +21,35 @@ TEXT_CHANNEL_ID = 1148735325410185257
 AUDIO_FILE = 'loop.mp3'
 PHRASES_FILE = 'phrases.txt'
 
-# === РАСПИСАНИЕ (МСК) ===
+# === ВРЕМЯ ОТПРАВКИ (по МСК) ===
 SEND_TIMES = [(10,30),(11,0),(11,30),(12,0),(15,0),(18,0),(18,35),(20,0),(22,0)]
 
-# === БАЗОВЫЕ ФРАЗЫ (будут дополняться обучением) ===
+# === ВСЕ ТВОИ ФРАЗЫ — НИ ОДНА НЕ УДАЛЕНА ===
 RESPONSES = [
     "А Кексик что на это скажет?", "чушпан-баран", "Опа на пенис прыгнул",
-    "Лошара", "Я нормальный пацан", "ты петух кстати", "Ну сосёшь ты и что?"
-    # ← остальные фразы можно добавить сюда или они будут приходить от обучения
+    "Со мной в постели стонать будешь", "Неплохо ты сосёшь", "А дрозд сын шлюхи кстати",
+    "Я ебу тебя в очко потому что ты кличко", "мальчик ты кто такой? водочки нам налей мы домой летим",
+    "А то что ты сосёшь, пацан это типа ничего?", "Маму проверь свою", "Кексик много что знает про тебя",
+    "что ты за хуйню пишешь ебанат?", "У тебя вообще рот закрывается?", "А вы куда поехали вообще?",
+    "я уже понял что вы лошки попущеные, пойду в гташке файтиться", "Ты даже срать не умеешь дебил",
+    "Вы гомнососы вообще не зарывайтесь", "Чевойта", "Вот бы меня скорее в арене разбанили",
+    "Маму дрозда шлюху в рот долблю", "ты петух кстати", "А почему у тебя во рту мой член",
+    "А ты на пенисе", "Здарова пацан оближи мне пукан", "Кибер Максим и Кибер Кексик ебут тебя в сраку",
+    "А почему я один в эту игру играю?", "А почему вы все бездарные твари ебаные?", " сосал?",
+    "А Акиа петух например, понял?", "Ну сосёшь ты и что?", "Лошара", "Я нормальный пацан",
+    "Узбеки спяяяяят", "Сегодня в Пермь еду", "Ты странно выёбываешься", "Что ты высираешь пацан",
+    "Тебе надо компьютер выключать и спать ложиться", "Ты дебильный пацан", "А теперь в хуй мне это повтори",
+    "Не выёбывайся я заболел", "Я его в рот ебал кстати", "А ты 5 правил кошерного еврея почитай"
 ]
 
 # === БУФЕР ===
 MESSAGES_BUFFER_SIZE = 4
 message_buffer = []
+messages_count = 0
 
-# === ID юзера: учимся + всегда отвечаем ===
-TARGET_USER_ID = 509732478047485952
+# === ID ===
+LEARNING_USER_ID = 509732478047485952
+ALWAYS_REPLY_USER_ID = 509732478047485952
 
 # === ИНТЕНТЫ ===
 intents = discord.Intents.default()
@@ -47,59 +58,49 @@ intents.members = True
 intents.voice_states = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# === ПРОВЕРКА ФАЙЛОВ (только локально) ===
-if not os.path.exists(AUDIO_FILE):
-    print(f"Предупреждение: {AUDIO_FILE} не найден (на хостинге будет без музыки)")
-
-if not os.path.exists(PHRASES_FILE):
-    print(f"Предупреждение: {PHRASES_FILE} не найден — расписание не будет работать")
-
+# === ЗАГРУЗКА ФРАЗ ===
 def load_phrases():
     if not os.path.exists(PHRASES_FILE):
         return []
-    with open(PHRASES_FILE, 'r', encoding='utf-8') as f:
-        return [line.strip() for line in f if line.strip()]
+    try:
+        with open(PHRASES_FILE, 'r', encoding='utf-8') as f:
+            return [line.strip() for line in f if line.strip()]
+    except:
+        return []
 
 daily_phrases = load_phrases()
 
-# === ГОЛОС + МУЗЫКА (без падений и спама) ===
-voice_client = None
-
+# === ГОЛОС + МУЗЫКА (без падений) ===
 async def ensure_voice_connection():
-    global voice_client
     channel = bot.get_channel(VOICE_CHANNEL_ID)
     if not channel:
-        print("Голосовой канал не найден — музыка отключена")
+        print("Голосовой канал не найден")
         return
-
     while True:
-        if not voice_client or not voice_client.is_connected():
+        vc = discord.utils.get(bot.voice_clients, channel__id=VOICE_CHANNEL_ID)
+        if not vc or not vc.is_connected():
             try:
-                voice_client = await channel.connect(reconnect=True, timeout=10)
-                print(f"Подключился к голосовому: {channel.name}")
-                bot.loop.create_task(music_loop(voice_client))
+                vc = await channel.connect(reconnect=True, timeout=10)
+                print(f"Подключён к голосу: {channel.name}")
+                bot.loop.create_task(music_loop(vc))
             except Exception as e:
-                print(f"Не удалось подключиться к голосу: {e}")
+                print(f"Ошибка подключения к голосу: {e}")
                 await asyncio.sleep(15)
         await asyncio.sleep(10)
 
 async def music_loop(vc):
     while True:
-        if vc.is_connected() and not vc.is_playing():
+        if vc.is_connected() and not vc.is_playing() and os.path.exists(AUDIO_FILE):
             try:
-                if not os.path.exists(AUDIO_FILE):
-                    await asyncio.sleep(30)
-                    continue
                 source = discord.FFmpegPCMAudio(
                     AUDIO_FILE,
                     before_options="-stream_loop -1 -re",
                     options="-vn -b:a 128k"
                 )
                 vc.play(source)
-                print("Музыка запущена и зациклена")
+                print("Музыка зациклена")
             except Exception as e:
-                print(f"FFmpeg не найден или ошибка: {e}")
-                await asyncio.sleep(60)  # не спамим
+                print(f"Ошибка воспроизведения: {e}")
         await asyncio.sleep(5)
 
 # === РАСПИСАНИЕ ===
@@ -108,17 +109,16 @@ async def scheduled_messages():
     channel = bot.get_channel(TEXT_CHANNEL_ID)
     if not channel or not daily_phrases:
         return
-
     now = datetime.now(pytz.timezone('Europe/Moscow'))
     if (now.hour, now.minute) in SEND_TIMES:
         key = now.strftime("%Y-%m-%d-%H-%M")
-        if not hasattr(scheduled_messages, "sent"):
-            scheduled_messages.sent = set()
-        if key not in scheduled_messages.sent:
+        if not hasattr(scheduled_messages, "sent_times"):
+            scheduled_messages.sent_times = set()
+        if key not in scheduled_messages.sent_times:
             phrase = random.choice(daily_phrases)
             await channel.send(phrase)
             print(f"[РАСПИСАНИЕ] {now.strftime('%H:%M')} → {phrase}")
-            scheduled_messages.sent.add(key)
+            scheduled_messages.sent_times.add(key)
 
 @scheduled_messages.before_loop
 async def before_scheduled():
@@ -127,55 +127,64 @@ async def before_scheduled():
 # === ON READY ===
 @bot.event
 async def on_ready():
-    print(f"Бот {bot.user} успешно запущен!")
-    print(f"Обучаюсь и всегда отвечаю юзеру с ID: {TARGET_USER_ID}")
+    print(f'Бот {bot.user} онлайн!')
+    print(f"Учусь на сообщениях от пользователя с ID: {LEARNING_USER_ID}")
+    print(f"ВСЕГДА отвечаю пользователю с ID: {ALWAYS_REPLY_USER_ID}")
+    
     bot.loop.create_task(ensure_voice_connection())
     scheduled_messages.start()
 
-# === ОСНОВНАЯ ЛОГИКА СООБЩЕНИЙ ===
+# === АВТООТВЕТЧИК + ОБУЧЕНИЕ + ВСЕГДА ОТВЕТ ===
 @bot.event
 async def on_message(message):
+    global messages_count, message_buffer
+
     if message.author == bot.user or message.channel.id != TEXT_CHANNEL_ID:
         return await bot.process_commands(message)
 
-    text = message.content.strip()
-
     # 1. Обучение
-    if message.author.id == TARGET_USER_ID:
+    if message.author.id == LEARNING_USER_ID:
+        text = message.content.strip()
         if text and text not in RESPONSES and len(text) <= 500 and not text.startswith('!'):
             RESPONSES.append(text)
-            print(f"ВЫУЧЕНО → {text} | Всего фраз: {len(RESPONSES)}")
+            print(f"ОБУЧЕНИЕ → Добавлена фраза: \"{text}\"")
+            print(f"Всего фраз в RESPONSES: {len(RESPONSES)}")
 
-        # 2. Всегда отвечаем этому юзеру
+    # 2. Всегда отвечаем этому юзеру
+    if message.author.id == ALWAYS_REPLY_USER_ID:
         response = random.choice(RESPONSES)
         try:
             await message.reply(response)
+            print(f"ВСЕГДА ОТВЕТ → {message.author}: {response}")
         except:
             await message.channel.send(response)
 
-    # 3. Буфер для всех
+    # 3. Буфер
+    messages_count += 1
     message_buffer.append(message)
     if len(message_buffer) > MESSAGES_BUFFER_SIZE:
         message_buffer.pop(0)
 
+    remaining = MESSAGES_BUFFER_SIZE - len(message_buffer)
+    print(f"[СЧЁТЧИК] Сообщений: {len(message_buffer)} / {MESSAGES_BUFFER_SIZE} | Осталось: {remaining}")
+
     if len(message_buffer) == MESSAGES_BUFFER_SIZE:
         target = random.choice(message_buffer)
-        resp = random.choice(RESPONSES)
+        response = random.choice(RESPONSES)
         try:
-            await target.reply(resp)
+            await target.reply(response)
+            print(f"[АВТООТВЕТ] → {target.author}: {response}")
         except:
-            await message.channel.send(resp)
+            await message.channel.send(response)
+
         message_buffer.clear()
-        print("[БУФЕР] Сработал — ответ отправлен")
+        messages_count = 0
+        print("[СЧЁТЧИК] Буфер сброшен")
 
     await bot.process_commands(message)
 
-# === КОНСОЛЬ БЕЗ СПАМА EOF (работает и на Railway) ===
-async def console_loop():
-    await bot.wait_until_ready()
-    print("Консоль отключена на хостинге (это нормально)")
+# === ЗАПУСК (БЕЗ КОНСОЛИ — ОНА ЛОМАЛА БОТА НА ХОСТИНГАХ) ===
+# console_loop полностью убран — он не нужен на Railway и вызывал EOF-спам + AttributeError
 
-# === ЗАПУСК ===
 print("Запускаю бота...")
-bot.loop.create_task(console_loop())  # просто заглушка, чтобы не было EOF-спама
 bot.run(TOKEN)
