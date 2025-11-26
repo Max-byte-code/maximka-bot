@@ -23,7 +23,7 @@ PHRASES_FILE = 'phrases.txt'
 
 #  ВРЕМЯ ОТПРАВКИ МСК
 SEND_TIMES = [
-    (18, 0),   
+    (17, 24),   
 ]
 
 # === ВСЕ ТВОИ ФРАЗЫ — НИ ОДНА НЕ УДАЛЕНА ===
@@ -167,6 +167,7 @@ async def on_message(message):
 # === ЗАПУСК ===
 print("Запускаю бота...")
 bot.run(TOKEN)
+
 
 
 
